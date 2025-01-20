@@ -1,6 +1,7 @@
 #include "dpu_transfer_helper.hpp"
 
 #include "common.hpp"
+#include <cassert>
 
 template <typename T>
 void transfer_chunks_to_mram(dpu_set_t set, const char *symbol, T *data, size_t chunk_size, size_t size) {
