@@ -13,19 +13,6 @@ Kernel &get_free_kernel(std::vector<Kernel> &kernels, size_t &cur_kernel) {
   auto &kernel = kernels[cur_kernel];
   cur_kernel++;
   return kernel;
-  /*
-
-  if (false == kernel.running) {
-    kernel.running = true;
-    cur_kernel++;
-    return kernel;
-  } else {
-    kernel.sync();
-    kernel.running = false;
-    cur_kernel++;
-    return kernel;
-  }
-  */
 }
 
 // Assumption A is in row order, B and C are in column order
@@ -129,7 +116,7 @@ void sgemm_wrapper(const char *transa, const char *transb, const int *m, const i
     // we need to change it into row major in order to use
     // it with our algorithm.
     assert(*lda == *m && "Unexpected padding in matrix A - UNHANDLED");
-    a_tmp_buffer = reinterpret_cast<float *>(malloc(alignUp(*m * *k * sizeof(float), 8)));
+    a_tmp_buffer = reinterpret_cast<float *>(malloc(alignUp(*m * *k * sizeof(float), 16)));
     transpose_matrix_column_major(a, a_tmp_buffer, *m, *k);
     a_buffer = a_tmp_buffer;
   } else {
@@ -153,7 +140,7 @@ void sgemm_wrapper(const char *transa, const char *transb, const int *m, const i
     // That means if we convert it then it's all good
     // we got B (LDB/n, k) and we need it to be B**T (k, n)
     assert(*ldb == *n && "Unexpected padding in matrix B - UNHANDLED");
-    b_tmp_buffer = reinterpret_cast<float *>(malloc(alignUp(*n * *k * sizeof(float), 8)));
+    b_tmp_buffer = reinterpret_cast<float *>(malloc(alignUp(*n * *k * sizeof(float), 16)));
     transpose_matrix_column_major(b, b_tmp_buffer, *n, *k);
     b_buffer = b_tmp_buffer;
   }
@@ -182,11 +169,11 @@ void gemm_row_maj_f(const int *m, const int *n, const int *k, const float *alpha
       reinterpret_cast<const uintptr_t>(c));
 
   // Get B to column major format
-  float *tmp_b = reinterpret_cast<float *>(malloc(*k * *n * sizeof(float)));
+  float *tmp_b = reinterpret_cast<float *>(malloc(alignUp(*k * *n * sizeof(float), 16)));
   transpose_matrix_row_major(b, tmp_b, *k, *n);
 
   // If Beta is not zero we need to change C to column major format
-  float *tmp_c = reinterpret_cast<float *>(malloc(*m * *n * sizeof(float)));
+  float *tmp_c = reinterpret_cast<float *>(malloc(alignUp(*m * *n * sizeof(float), 16)));
   if (*beta != 0.0f) {
     transpose_matrix_row_major(c, tmp_c, *m, *n);
   }
