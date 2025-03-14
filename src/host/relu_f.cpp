@@ -115,6 +115,7 @@ int relu_f(const float *input, float *output, size_t size) {
   DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
   from_mram(set, "buffer", output, size);
+  DPU_ASSERT(dpu_free(set));
   return 0;
 }
 }
