@@ -73,6 +73,8 @@ int softmax_impl(const float *vec_in, float *vec_out, size_t chunk_size, size_t 
   softmax.get_arg_gather(DPU_MRAM_HEAP_POINTER_NAME, 0, reinterpret_cast<void *>(vec_out), chunk_size * sizeof(float),
                          size * sizeof(float), false);
 
+  softmax.free_dpus();
+
   return 0;
 }
 
