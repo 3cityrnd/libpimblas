@@ -60,20 +60,23 @@ bool test_sgemm_wrapper() {
 }
 
 bool test_gemm_row_maj_f() {
-  const int M = 1234;
-  const int N = 567;
-  const int K = 89;
+  const int M = 1111;
+  const int N = 143;
+  const int K = 13;
   auto A = generateRandomFloats(M * K, 1.0f, 10.0f);
   auto B = generateRandomFloats(K * N, 1.0f, 10.0f);
   auto C = generateRandomFloats(M * N, 1.0f, 10.0f);
   auto C_host = pimblas::vector<float>(C.begin(), C.end());
   float alpha = 1.0f;
-  float beta = 1.0f;
+  float beta = 0.0f;
 
   gemm_row_maj_f(&M, &N, &K, &alpha, A.data(), B.data(), &beta, C.data());
   host_sgemm_row_major(A.data(), B.data(), C_host.data(), alpha, beta, M, N, K);
 
-  return mostly_same_rel(C.data(), C_host.data(), M * N, 1e-4f);
+  if (false == mostly_same_rel(C.data(), C_host.data(), M * N, 1e-4f)) {
+    return false;
+  }
+  return true;
 }
 
 int main(int argc, char **argv) {

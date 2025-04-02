@@ -91,7 +91,7 @@ const KernelStatus &Kernel::get_status() {
 
 void Kernel::read_log(FILE *stream) {
   dpu_set_t dpu;
-  DPU_FOREACH(dpu_set, dpu) { DPU_ASSERT(dpu_log_read(dpu, stream)); }
+  DPU_FOREACH(dpu_set, dpu) { dpu_log_read(dpu, stream); }
 }
 
 void Kernel::free_dpus() { DPU_ASSERT(dpu_free(dpu_set)); }

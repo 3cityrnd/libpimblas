@@ -10,6 +10,11 @@ T alignUp(T value, size_t alignment) {
 }
 
 template <typename T>
+T alignDown(T value, size_t alignment) {
+  return value & ~(alignment - 1);
+}
+
+template <typename T>
 size_t transfer_chunks(dpu_set_t set, uint32_t nr_dpus, dpu_xfer_t xfer, dpu_xfer_flags_t flags,
                        const char *symbol_name, size_t sym_offset, T *data, size_t chunk_size, size_t size) {
   bool has_remainder = size % chunk_size != 0;
@@ -33,6 +38,9 @@ size_t transfer_chunks(dpu_set_t set, uint32_t nr_dpus, dpu_xfer_t xfer, dpu_xfe
 
   return sym_offset + alignUp(chunk_size * sizeof(T), 8);
 }
+
+size_t safe_gather(dpu_set_t set, uint32_t nr_dpus, const char *symbol_name, size_t symbol_offset, uint8_t *data,
+                   size_t chunk_size, size_t size);
 
 template <typename T>
 size_t transfer_full(dpu_set_t set, dpu_xfer_flags_t flags, const char *symbol_name, size_t sym_offset, T *data,

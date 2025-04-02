@@ -5,15 +5,39 @@
 #include "gemvf_kernel.hpp"
 #include "matrix_transpose.hpp"
 
-template <typename Kernel>
-Kernel &get_free_kernel(std::vector<Kernel> &kernels, size_t &cur_kernel) {
-  if (cur_kernel >= kernels.size()) {
-    cur_kernel = 0;
+template <class Kernel>
+struct SCS {  // Single Column Solver
+  Kernel kernel;
+  int column = -1;
+};
+
+template <class Kernel>
+class MCS {  // Multi Column Solver
+  using SCSVecT = std::vector<SCS<Kernel>>;
+  using iter = typename SCSVecT::iterator;
+
+ public:
+  MCS(size_t nr_solvers) : solvers(nr_solvers) { it = solvers.begin(); }
+
+  SCSVecT &get_solvers() { return solvers; }
+
+  SCS<Kernel> &get_free_kernel() {
+    while (true) {
+      if (it->kernel.get_status().done) {
+        return *it;
+      }
+      if (std::next(it) == solvers.end()) {
+        it = solvers.begin();
+      } else {
+        it++;
+      }
+    }
   }
-  auto &kernel = kernels[cur_kernel];
-  cur_kernel++;
-  return kernel;
-}
+
+ private:
+  SCSVecT solvers;
+  iter it;
+};
 
 // Assumption A is in row order, B and C are in column order
 // A is of size rowsA x rowsB
@@ -25,41 +49,55 @@ void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, con
   uint32_t rows_per_dpu = 0;
   gemv_launch_statistics<float>(rowsA, rowsB, nr_dpus, rows_per_dpu);
 
-  auto nr_kernels = colsB;
+  auto nr_solvers = std::min(8 * 8 * 2 * 20 / nr_dpus, (colsB + 1) / 2);
 
   if (*beta == 0.0f) {
-    std::vector<GEMVF_Kernel> kernels(nr_kernels);
+    MCS<GEMVF_Kernel> mcs(nr_solvers);
+
+    auto &solvers = mcs.get_solvers();
     size_t kernel_it = 0;
-    for (kernel_it = 0; kernel_it < kernels.size(); kernel_it++) {
-      auto &kernel = kernels[kernel_it];
+    for (kernel_it = 0; kernel_it < nr_solvers; kernel_it++) {
+      auto &kernel = solvers[kernel_it].kernel;
       if (kernel.init(rowsA, rowsB, nr_dpus, rows_per_dpu) == false) {
         break;
       }
+    }
+    solvers.resize(kernel_it);
 
+    for (auto &scs : solvers) {
+      auto &kernel = scs.kernel;
       kernel.set_params(alpha, false);
       kernel.set_A(A, true);
     }
-    kernels.resize(kernel_it);
 
-    show_trace("Running {} kernels. Each kernel with {} DPUs.\n", kernels.size(), nr_dpus);
+    show_trace("Running {} kernels. Each kernel with {} DPUs.\n", solvers.size(), nr_dpus);
 
     size_t cur_kernel = 0;
     for (uint32_t i = 0; i < colsB; i++) {
-      auto &kernel = get_free_kernel(kernels, cur_kernel);
+      auto &scs = mcs.get_free_kernel();
+      auto &kernel = scs.kernel;
+      if (scs.column != -1) {
+        kernel.get_y_safe(C + rowsA * scs.column);
+        scs.column = -1;
+      }
       kernel.set_x(B + rowsB * i, true);
       kernel.launch(true);
-      kernel.get_y(C + rowsA * i, true);
+      scs.column = i;
     }
 
-    for (auto &kernel : kernels) {
-      kernel.sync();
-      kernel.free_dpus();
+    for (auto &scs : solvers) {
+      if (scs.column != -1) {
+        scs.kernel.sync();
+        scs.kernel.get_y_safe(C + rowsA * scs.column);
+      }
+      scs.kernel.free_dpus();
     }
   } else {
-    std::vector<GEMVF_Kernel_Beta> kernels(nr_kernels);
+    MCS<GEMVF_Kernel_Beta> mcs(nr_solvers);
+    auto &solvers = mcs.get_solvers();
     size_t kernel_it = 0;
-    for (kernel_it = 0; kernel_it < kernels.size(); kernel_it++) {
-      auto &kernel = kernels[kernel_it];
+    for (kernel_it = 0; kernel_it < solvers.size(); kernel_it++) {
+      auto &kernel = solvers[kernel_it].kernel;
       if (kernel.init(rowsA, rowsB, nr_dpus, rows_per_dpu) == false) {
         break;
       }
@@ -67,21 +105,32 @@ void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, con
       kernel.set_params(alpha, beta, false);
       kernel.set_A(A, true);
     }
-    kernels.resize(kernel_it);
+    solvers.resize(kernel_it);
 
-    show_trace("Running {} kernels. Each kernel with {} DPUs.\n", kernels.size(), nr_dpus);
+    show_trace("Running {} kernels. Each kernel with {} DPUs.\n", solvers.size(), nr_dpus);
 
     size_t cur_kernel = 0;
     for (uint32_t i = 0; i < colsB; i++) {
-      auto &kernel = get_free_kernel(kernels, cur_kernel);
+      auto &scs = mcs.get_free_kernel();
+      auto &kernel = scs.kernel;
+      if (scs.column != -1) {
+        kernel.get_y_safe(C + rowsA * scs.column);
+        scs.column = -1;
+      }
       kernel.set_x(B + rowsB * i, true);
       kernel.set_y(C + rowsA * i, true);
       kernel.launch(true);
-      kernel.get_y(C + rowsA * i, true);
+      scs.column = i;
     }
 
-    for (auto &kernel : kernels) {
-      kernel.sync();
+    for (auto &scs : solvers) {
+      auto kernel = scs.kernel;
+      if (scs.column != -1) {
+        kernel.sync();
+        kernel.get_y_safe(C + rowsA * scs.column);
+        scs.column = -1;
+      }
+
       kernel.free_dpus();
     }
   }

@@ -18,6 +18,8 @@ class GEMVF_Kernel_Beta : public Kernel {
 
   void get_y(float *data, bool async);
 
+  void get_y_safe(float *data);
+
   void set_params(const float *alpha, const float *beta, bool async);
 
   void init(uint32_t m, uint32_t n);
@@ -49,12 +51,15 @@ class GEMVF_Kernel : public Kernel {
 
   void get_y(float *data, bool async);
 
+  void get_y_safe(float *data);
+
   void set_params(const float *alpha, bool async);
 
   void init(uint32_t m, uint32_t n);
   bool init(uint32_t m, uint32_t n, uint32_t nr_dpus, uint32_t rows_per_dpu);
 
   bool running = false;
+  int cur_i = -1;
 
  private:
   uint32_t m;

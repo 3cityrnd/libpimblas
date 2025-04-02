@@ -19,6 +19,11 @@ void GEMVF_Kernel_Beta::get_y(float *data, bool async) {
   get_arg_gather(DPU_MRAM_HEAP_POINTER_NAME, y_offset, data, rows_per_dpu * sizeof(float), m * sizeof(float), async);
 }
 
+void GEMVF_Kernel_Beta::get_y_safe(float *data) {
+  safe_gather(dpu_set, nr_dpus, DPU_MRAM_HEAP_POINTER_NAME, y_offset, reinterpret_cast<uint8_t *>(data),
+              rows_per_dpu * sizeof(float), m * sizeof(float));
+}
+
 void GEMVF_Kernel_Beta::set_params(const float *alpha, const float *beta, bool async) {
   params args{.rows_per_dpu = this->rows_per_dpu, .row_size = n, .alpha = *alpha, .beta = *beta};
   this->set_arg_broadcast_exact("args", 0, reinterpret_cast<uint8_t *>(&args), sizeof(params), async);
@@ -60,6 +65,11 @@ void GEMVF_Kernel::set_x(const float *data, bool async) {
 
 void GEMVF_Kernel::get_y(float *data, bool async) {
   get_arg_gather(DPU_MRAM_HEAP_POINTER_NAME, y_offset, data, rows_per_dpu * sizeof(float), m * sizeof(float), async);
+}
+
+void GEMVF_Kernel::get_y_safe(float *data) {
+  safe_gather(dpu_set, nr_dpus, DPU_MRAM_HEAP_POINTER_NAME, y_offset, reinterpret_cast<uint8_t *>(data),
+              rows_per_dpu * sizeof(float), m * sizeof(float));
 }
 
 void GEMVF_Kernel::set_params(const float *alpha, bool async) {
