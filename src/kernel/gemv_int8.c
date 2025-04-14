@@ -25,17 +25,20 @@ row_size - maximum size of single matrix row
 
 */
 
-// We've got 64KB of WRAM, we are working with 8-bit ints, and need to allocate wram
-// for part of A rows, and part of X rows and output(small in comparison), and 16 tasklets.
-// That makes 4KB per tasklet, that means we could go to block size 2048 - aka 4KB, but that
-// would leave no place for output. So we stick with 1024 for now.
-// TODO: Find even more optimal value
 #define BLOCK_SIZE 1024
 
 #define MIN(x, y) (((y) < (x)) ? (y) : (x))
 #define ROUND_UP(x, s) (((x) + ((s) - 1)) & ~((s) - 1))
 #define ROUND_DOWN(x, s) ((x) & ~((s) - 1))
 
+/*
+ * Performs a dot product of eight 8-bit values.
+ *
+ * This macro loads two 64-bit values from the memory locations pointed to
+ * by `x` and `y`, respectively. It then calculates the dot product of the
+ * individual 8-bit integers from both `x` and `y` in a highly optimized
+ * manner using various multiplication intrinsics.
+ */
 #define DOT_8(x, y, acc)                      \
   do {                                        \
     unsigned long x_dw, y_dw;                 \
@@ -100,9 +103,6 @@ int main() {
 
   // Note: All MRAM allocations need to be 8B aligned in order to read from/write to them.
 
-  // Offset of A_mram should be 8B aligned,
-  // even if row_size is odd, rows_per_tasklet is always aligned to 2,
-  // so it should be fine, because we are operating 4B ints.
   int A_mram_offset = tasklet_id * rows_per_tasklet * args.row_size;
   int8_t *A_mram = (int8_t *)(DPU_MRAM_HEAP_POINTER);
   int mram_offset = ROUND_UP(args.row_size * args.rows_per_dpu, 8);
@@ -124,8 +124,6 @@ int main() {
   // We add 8B in order to be aligned.
   int8_t *A_wram = (int8_t *)mem_alloc(BLOCK_SIZE + 8);
 
-  // Allocation needs to be aligned to 64B, or we start getting
-  // allocations on top of another...
   int Ax_len = rows_per_tasklet * sizeof(int);
   int *Ax_wram = (int *)mem_alloc(Ax_len);
 
@@ -140,8 +138,6 @@ int main() {
     for (int i = 0; i < rows_per_tasklet; ++i) {
       // If offset is not aligned to 8B it will be automatically aligned down to 8 bytes
       // This happens when row_size is an odd value.
-      // In our case when we are working on 8-bit ints it means we need to shift
-      // 8 int (4B) to get to the values we want. That also means we need to read a bit more
       int A_offset = A_mram_offset + i * args.row_size + b_offset;
       int8_t* A_wram_read = A_wram;
       if (A_offset & 7) {
