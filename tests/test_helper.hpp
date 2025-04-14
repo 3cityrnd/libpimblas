@@ -34,13 +34,14 @@ using vector = std::vector<T, AlignedAllocator<T>>;
 
 }
 
-pimblas::vector<int> generateRandomIntegers(int size, int min, int max) {
+template <class IntType = int>
+pimblas::vector<IntType> generateRandomIntegers(size_t size, IntType min, IntType max) {
   show_debug("Generate Random Ints range {} - {}  size={}", min, max, size);
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(min, max);
-  pimblas::vector<int> randomNumbers(size);
-  std::for_each(randomNumbers.begin(), randomNumbers.end(), [&dis, &gen](int &v) { v = dis(gen); });
+  std::uniform_int_distribution<IntType> dis(min, max);
+  pimblas::vector<IntType> randomNumbers(size);
+  std::for_each(randomNumbers.begin(), randomNumbers.end(), [&](IntType &v) { v = dis(gen); });
   return randomNumbers;
 }
 
