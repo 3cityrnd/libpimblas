@@ -37,7 +37,7 @@ endif()
 target_link_libraries(pimblas PRIVATE ${PIMBLAS_LINK_LIBS})  # ./dpu-pkg-config --cflags --libs dpu 
 install(TARGETS pimblas DESTINATION lib)
 
-target_compile_options(pimblas PRIVATE "-mavx")
+target_compile_options(pimblas PRIVATE "-mavx" "-mavx2")
 
 set_target_properties(pimblas PROPERTIES INSTALL_RPATH "${LIBSTDCXX_DIR}:${CND_HOME}/lib:${LD_LIBRARY_PATH}")
 set_target_properties(pimblas PROPERTIES BUILD_RPATH "${LIBSTDCXX_DIR}")

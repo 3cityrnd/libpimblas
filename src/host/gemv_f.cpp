@@ -1,6 +1,6 @@
 #include "common.hpp"
 #include "dpu_transfer_helper.hpp"
-#include "gemvf_kernel.hpp"
+#include "gemv_kernel.hpp"
 
 void print_output(dpu_set_t set) {
   dpu_set_t dpu;

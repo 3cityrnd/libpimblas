@@ -14,11 +14,12 @@ int host_gemv_int8(uint32_t m, uint32_t n, const int8_t *mat, const int8_t *vec,
 }
 
 int main(int argc, char **argv) {
-  const int M = 1383;
-  const int N = 8934;
-  auto mat = generateRandomIntegral<int8_t>(M * N, 127, 127);
-  auto vec = generateRandomIntegral<int8_t>(N, 127, 127);
-  auto y = generateRandomIntegers(M, 1, 1);
+  const int M = 1331;
+  const int N = 1427;
+  auto mat =
+      generateRandomIntegral<int8_t>(M * N, std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max());
+  auto vec = generateRandomIntegral<int8_t>(N, std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max());
+  auto y = generateRandomIntegers(M, -100, 100);
   auto y_host = pimblas::vector<int>(y.begin(), y.end());
   int alpha = 1;
   int beta = 0;

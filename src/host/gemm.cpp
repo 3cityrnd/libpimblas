@@ -1,9 +1,47 @@
 #include <cassert>
 #include <chrono>
+#include <iomanip>
+#include <type_traits>
 
 #include "dpu_transfer_helper.hpp"
-#include "gemvf_kernel.hpp"
+#include "gemv_kernel.hpp"
 #include "matrix_transpose.hpp"
+
+template <typename T>
+void print_matrix_row_major(const T *mat, size_t rows, size_t cols) {
+  static_assert(std::is_integral<T>::value, "This function only works with integer types");
+
+  for (size_t i = 0; i < rows; ++i) {
+    for (size_t j = 0; j < cols; ++j) {
+      // For small types (like int8_t), cast to int for proper numeric display
+      if constexpr (sizeof(T) < sizeof(int)) {
+        std::cout << std::setw(6) << static_cast<int>(mat[i * cols + j]) << " ";
+      } else {
+        std::cout << std::setw(6) << mat[i * cols + j] << " ";
+      }
+    }
+    std::cout << "\n";
+  }
+  std::cout << "\n";
+}
+
+template <typename T>
+void print_matrix_col_major(const T *mat, size_t rows, size_t cols) {
+  static_assert(std::is_integral<T>::value, "This function only works with integer types");
+
+  for (size_t i = 0; i < rows; ++i) {
+    for (size_t j = 0; j < cols; ++j) {
+      // For small types (like int8_t), cast to int for proper numeric display
+      if constexpr (sizeof(T) < sizeof(int)) {
+        std::cout << std::setw(6) << static_cast<int>(mat[j * rows + i]) << " ";
+      } else {
+        std::cout << std::setw(6) << mat[j * rows + i] << " ";
+      }
+    }
+    std::cout << "\n";
+  }
+  std::cout << "\n";
+}
 
 template <class Kernel>
 struct SCS {  // Single Column Solver
@@ -43,6 +81,67 @@ class MCS {  // Multi Column Solver
 // A is of size rowsA x rowsB
 // B rowsB x colsB
 // C rowsA x colsB
+void sgemm_int8(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const int8_t *A, const int8_t *B, int32_t *C,
+                const int *alpha, const int *beta) {
+  uint32_t nr_dpus = 512;
+  uint32_t rows_per_dpu = 0;
+  gemv_launch_statistics<int8_t>(rowsA, rowsB, nr_dpus, rows_per_dpu);
+
+  auto nr_solvers = std::min(8 * 8 * 2 * 20 / nr_dpus, (colsB + 1) / 2);
+
+  bool has_beta = (*beta != 0);
+  MCS<GEMV_INT8_Kernel> mcs(nr_solvers);
+
+  auto &solvers = mcs.get_solvers();
+  size_t kernel_it = 0;
+  for (kernel_it = 0; kernel_it < nr_solvers; kernel_it++) {
+    auto &kernel = solvers[kernel_it].kernel;
+    if (kernel.init(rowsA, rowsB, nr_dpus, rows_per_dpu) == false) {
+      break;
+    }
+  }
+  solvers.resize(kernel_it);
+
+  for (auto &scs : solvers) {
+    auto &kernel = scs.kernel;
+    kernel.set_params(alpha, beta, false);
+    kernel.set_A(A, true);
+  }
+
+  show_trace("Running {} kernels. Each kernel with {} DPUs.\n", solvers.size(), nr_dpus);
+
+  size_t cur_kernel = 0;
+  for (uint32_t i = 0; i < colsB; i++) {
+    auto &scs = mcs.get_free_kernel();
+    auto &kernel = scs.kernel;
+    if (scs.column != -1) {
+      kernel.get_y_safe(C + rowsA * scs.column);
+      scs.column = -1;
+    }
+    kernel.set_x(B + rowsB * i, true);
+    if (has_beta) {
+      kernel.set_y(C + rowsA * i, true);
+    }
+    kernel.launch(true);
+    scs.column = i;
+  }
+
+  for (auto &scs : solvers) {
+    auto &kernel = scs.kernel;
+    if (scs.column != -1) {
+      kernel.sync();
+      kernel.get_y_safe(C + rowsA * scs.column);
+      scs.column = -1;
+    }
+
+    kernel.free_dpus();
+  }
+}
+
+// Assumption A is in row order, B and C are in column order
+// A is of size rowsA x rowsB
+// B rowsB x colsB
+// C rowsA x colsB
 void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, const float *B, float *C,
              const float *alpha, const float *beta) {
   uint32_t nr_dpus = 512;
@@ -77,6 +176,7 @@ void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, con
       auto &scs = mcs.get_free_kernel();
       auto &kernel = scs.kernel;
       if (scs.column != -1) {
+        kernel.sync();
         kernel.get_y_safe(C + rowsA * scs.column);
         scs.column = -1;
       }
@@ -87,7 +187,6 @@ void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, con
 
     for (auto &scs : solvers) {
       if (scs.column != -1) {
-        scs.kernel.sync();
         scs.kernel.get_y_safe(C + rowsA * scs.column);
       }
       scs.kernel.free_dpus();
@@ -124,7 +223,7 @@ void sgemm_f(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const float *A, con
     }
 
     for (auto &scs : solvers) {
-      auto kernel = scs.kernel;
+      auto &kernel = scs.kernel;
       if (scs.column != -1) {
         kernel.sync();
         kernel.get_y_safe(C + rowsA * scs.column);
@@ -146,6 +245,7 @@ bool is_transpose(char trans) {
   return false;
 }
 
+extern "C" {
 // Performs: C = alpha * op(A) * op(B) + beta * C
 // a, b, c are always in column major order
 // trans - if 'n' op(a) = A, if 't' or 'c' op (A) = A**T
@@ -207,7 +307,7 @@ void sgemm_wrapper(const char *transa, const char *transb, const int *m, const i
 A is an m by k matrix
 B is an k by n matrix
 C is an m by n matrix
-All matricies are in row major format. Memory is continuous
+All matricies are in row major format. Memory is contiguous
 */
 void gemm_row_maj_f(const int *m, const int *n, const int *k, const float *alpha, const float *a, const float *b,
                     const float *beta, float *c) {
@@ -234,4 +334,38 @@ void gemm_row_maj_f(const int *m, const int *n, const int *k, const float *alpha
 
   free(tmp_b);
   free(tmp_c);
+}
+
+/*
+A is an m by k matrix
+B is an k by n matrix
+C is an m by n matrix
+All matricies are in row major format. Memory is contiguous
+*/
+void gemm_row_maj_int8(const int *m, const int *n, const int *k, const int *alpha, const int8_t *a, const int8_t *b,
+                       const int *beta, int *c) {
+  show_trace(
+      "gemm_row_int8 m=[{}] n=[{}] k=[{}] alpha=[{}] a=[{:#018x}] b=[{:#018x}] "
+      "beta=[{}] c=[{:#018x}]",
+      *m, *n, *k, *alpha, reinterpret_cast<const uintptr_t>(a), reinterpret_cast<const uintptr_t>(b), *beta,
+      reinterpret_cast<const uintptr_t>(c));
+
+  // Get B to column major format
+  int8_t *tmp_b = reinterpret_cast<int8_t *>(malloc(alignUp(*k * *n * sizeof(int8_t), 16)));
+  transpose_matrix_row_major(b, tmp_b, *k, *n);
+
+  // If Beta is not zero we need to change C to column major format
+  int *tmp_c = reinterpret_cast<int *>(malloc(alignUp(*m * *n * sizeof(int), 16)));
+  if (*beta != 0) {
+    transpose_matrix_row_major(c, tmp_c, *m, *n);
+  }
+
+  sgemm_int8(*m, *k, *n, a, tmp_b, tmp_c, alpha, beta);
+
+  // Get C from col major to row major
+  transpose_matrix_column_major(tmp_c, c, *m, *n);
+
+  free(tmp_b);
+  free(tmp_c);
+}
 }
