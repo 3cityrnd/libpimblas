@@ -130,7 +130,7 @@ void GEMV_INT8_Kernel::set_params(const int32_t *alpha, const int32_t *beta, boo
 
 void GEMV_INT8_Kernel::init(uint32_t m, uint32_t n) {
   this->nr_dpus = 64;
-  gemv_launch_statistics<int8_t>(m, n, this->nr_dpus, this->rows_per_dpu);
+  gemv_launch_statistics<int32_t>(m, n, this->nr_dpus, this->rows_per_dpu);
   this->init(m, n, nr_dpus, rows_per_dpu);
 }
 

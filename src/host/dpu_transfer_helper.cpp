@@ -34,7 +34,6 @@ void gemv_launch_statistics(uint32_t m, uint32_t n, uint32_t &numDPUs, uint32_t 
 }
 
 // Instantiation
-template void gemv_launch_statistics<int8_t>(uint32_t m, uint32_t n, uint32_t &numDPUs, uint32_t &rowsPerDPU);
 template void gemv_launch_statistics<int>(uint32_t m, uint32_t n, uint32_t &numDPUs, uint32_t &rowsPerDPU);
 template void gemv_launch_statistics<float>(uint32_t m, uint32_t n, uint32_t &numDPUs, uint32_t &rowsPerDPU);
 

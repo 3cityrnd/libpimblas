@@ -146,7 +146,7 @@ void sgemm_int8(uint32_t rowsA, uint32_t rowsB, uint32_t colsB, const int8_t *A,
                 const int *alpha, const int *beta) {
   uint32_t nr_dpus = 512;
   uint32_t rows_per_dpu = 0;
-  gemv_launch_statistics<int8_t>(rowsA, rowsB, nr_dpus, rows_per_dpu);
+  gemv_launch_statistics<int32_t>(rowsA, rowsB, nr_dpus, rows_per_dpu);
 
   auto nr_solvers = std::min(8 * 8 * 2 * 20 / nr_dpus, (colsB + 1) / 2);
 
