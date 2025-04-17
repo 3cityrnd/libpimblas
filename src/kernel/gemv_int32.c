@@ -29,7 +29,7 @@ row_size - maximum size of single matrix row
 // That makes 4KB per tasklet, that means we could go to block size 512 - aka 4KB, but that
 // would leave no place for output. So we stick with 256 for now.
 // TODO: Find even more optimal value
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 64
 
 struct params {
   uint32_t rows_per_dpu;
@@ -94,8 +94,6 @@ int main() {
   // We add 64B in order to be aligned.
   int *A_wram = (int *)mem_alloc((BLOCK_SIZE) * sizeof(int) + 64);
 
-  // Allocation needs to be aligned to 64B, or we start getting
-  // allocations on top of another...
   uint32_t result_size = alignUpTo64(rows_per_tasklet * sizeof(int));
   int *mul_result_wram = (int *)mem_alloc(result_size);
 
@@ -109,7 +107,6 @@ int main() {
     int block_length = block_offset + BLOCK_SIZE <= args.row_size ? BLOCK_SIZE : args.row_size - block_offset;
     mram_read((__mram_ptr void *)(x_mram + block_offset), x_wram, BLOCK_SIZE * sizeof(int));
     for (uint32_t i = 0; i < rows_per_tasklet; i++) {
-      int sum = 0;
       uint32_t a_offset = (uint32_t)(A_mram + i * args.row_size + block_offset);
       int *A_wram_read = NULL;
       if (a_offset & 7) {
@@ -124,6 +121,8 @@ int main() {
         A_wram_read = A_wram;
       }
 
+      int sum = 0;
+#pragma unroll
       for (uint32_t j = 0; j < block_length; ++j) {
         sum += A_wram_read[j] * x_wram[j];
       }
@@ -132,15 +131,28 @@ int main() {
     }
   }
 
-  int *result_wram = (int *)mem_alloc(result_size);
-  mram_read((__mram_ptr void *)(result_mram), result_wram, rows_per_tasklet * sizeof(int));
+  if (args.beta != 0) {
+    int *result_wram = (int *)mem_alloc(result_size);
+    mram_read((__mram_ptr void *)(result_mram), result_wram, rows_per_tasklet * sizeof(int));
 
-  for (uint32_t i = 0; i < rows_per_tasklet; i++) {
-    // y = alpha * Ax + beta * y
-    result_wram[i] = args.alpha * mul_result_wram[i] + args.beta * result_wram[i];
+    if (args.alpha != 1) {
+      for (uint32_t i = 0; i < rows_per_tasklet; i++) {
+        result_wram[i] = args.alpha * mul_result_wram[i] + args.beta * result_wram[i];
+      }
+    } else {
+      for (uint32_t i = 0; i < rows_per_tasklet; i++) {
+        result_wram[i] = mul_result_wram[i] + args.beta * result_wram[i];
+      }
+    }
+    mram_write(result_wram, (__mram_ptr void *)result_mram, rows_per_tasklet * sizeof(int));
+  } else {
+    if (args.alpha != 1.0f) {
+      for (uint32_t i = 0; i < rows_per_tasklet; i++) {
+        mul_result_wram[i] = args.alpha * mul_result_wram[i];
+      }
+    }
+    mram_write(mul_result_wram, (__mram_ptr void *)result_mram, rows_per_tasklet * sizeof(int));
   }
-
-  mram_write(result_wram, (__mram_ptr void *)result_mram, rows_per_tasklet * sizeof(int));
 
   return 0;
 }

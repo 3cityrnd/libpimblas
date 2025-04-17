@@ -49,6 +49,10 @@ void Kernel::get_arg_copy_each(const char *sym_name, size_t sym_offset, void *da
   }
 }
 
+void Kernel::get_arg_gather_safe(const char *sym_name, size_t sym_offset, void *data, size_t chunk_size, size_t size) {
+  safe_gather(dpu_set, nr_dpus, sym_name, sym_offset, reinterpret_cast<uint8_t *>(data), chunk_size, size);
+}
+
 void Kernel::launch(bool async) {
   if (async) {
     DPU_ASSERT(dpu_launch(dpu_set, DPU_ASYNCHRONOUS));
