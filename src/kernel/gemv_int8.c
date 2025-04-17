@@ -140,24 +140,23 @@ int main() {
       // This happens when row_size is an odd value.
       int A_offset = A_mram_offset + i * args.row_size + b_offset;
       int8_t* A_wram_read = A_wram;
+      int acc = 0;
+      int j = 0;
       if (A_offset & 7) {
         mram_read((__mram_ptr void *)(A_mram + ROUND_DOWN(A_offset, 8)), A_wram, BLOCK_SIZE + 8);
         A_wram_read += A_offset & 7;
       } else {
         mram_read((__mram_ptr void *)(A_mram + A_offset), A_wram, BLOCK_SIZE);
+
+        #pragma unroll(64)
+        for (; j < ROUND_DOWN(b_length, 512); j += 8) {
+          DOT_8(&A_wram_read[j], &x_wram[j], acc);
+        }
       }
 
-      int acc = 0;
-      int j = 0;
-      for (; j < ROUND_DOWN(b_length, 64); j += 64) {
-        DOT_8(&A_wram_read[j],      &x_wram[j],      acc);
-        DOT_8(&A_wram_read[j + 8],  &x_wram[j + 8],  acc);
-        DOT_8(&A_wram_read[j + 16], &x_wram[j + 16], acc);
-        DOT_8(&A_wram_read[j + 24], &x_wram[j + 24], acc);
-        DOT_8(&A_wram_read[j + 32], &x_wram[j + 32], acc);
-        DOT_8(&A_wram_read[j + 40], &x_wram[j + 40], acc);
-        DOT_8(&A_wram_read[j + 48], &x_wram[j + 48], acc);
-        DOT_8(&A_wram_read[j + 56], &x_wram[j + 56], acc);
+      #pragma unroll(64)
+      for (; j < ROUND_DOWN(b_length, 64); ++j) {
+        acc += A_wram_read[j] * x_wram[j];
       }
 
       for (; j < b_length; ++j) {
