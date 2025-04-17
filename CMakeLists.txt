@@ -22,10 +22,10 @@ endif()
 
 
 
-set(CND_HOME $ENV{CONDA_PREFIX})
-if(NOT CND_HOME)
-message(FATAL_ERROR "Conda is not installed")
-endif()
+# set(CND_HOME $ENV{CONDA_PREFIX})
+# if(NOT CND_HOME)
+# message(FATAL_ERROR "Conda is not installed")
+# endif()
 
 #find_library(FOUND_PYT36 NAMES python3.6m PATHS "${CND_HOME}/lib" )
 #if(NOT FOUND_PYT36)
