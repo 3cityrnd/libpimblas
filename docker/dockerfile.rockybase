@@ -1,0 +1,49 @@
+FROM rockylinux:9.2
+
+RUN dnf update -y
+
+
+RUN dnf install libedit-devel -y
+RUN dnf install numactl-libs -y
+
+# from python building
+RUN dnf install git -y
+RUN dnf install gcc -y
+RUN dnf install patch -y
+RUN dnf install zlib-devel -y
+RUN dnf install bzip2 -y
+RUN dnf install bzip2-devel -y
+RUN dnf install openssl-devel -y
+RUN dnf install sqlite-devel -y
+RUN dnf install xz -y
+RUN dnf install xz-devel -y
+RUN dnf install readline-devel -y
+RUN curl -fsSL https://pyenv.run | bash
+
+
+ENV PYENV_ROOT /root/.pyenv
+ENV PATH $PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
+
+RUN pyenv install 3.6.15
+RUN pyenv global 3.6.15
+RUN pip3 install six
+RUN pip3 install psutil
+RUN pyenv global system
+
+WORKDIR /app
+
+# ADD ./rocky/upmem-2024.2.0-Linux-x86_64.tar.gz /app
+ADD http://sdk-releases.upmem.com/2024.2.0/rocky_8/upmem-2024.2.0-Linux-x86_64.tar.gz /app/
+RUN tar -xvf /app/upmem-2024.2.0-Linux-x86_64.tar.gz
+
+
+ENV UPMEM_HOME=/app/upmem-2024.2.0-Linux-x86_64/
+ENV LD_LIBRARY_PATH=/app/upmem-2024.2.0-Linux-x86_64/lib64:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/root/.pyenv/versions/3.6.15/lib/:${LD_LIBRARY_PATH}
+
+ENV PATH=/app/upmem-2024.2.0-Linux-x86_64/bin/:${PATH}
+ENV PYTHONPATH=/app/upmem-2024.2.0-Linux-x86_64/lib/python3.6/site-packages/:${PYTHONPATH}
+
+# ADD example.py /app
+
+# CMD ["python3", "example.py"]

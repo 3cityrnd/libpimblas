@@ -1,0 +1,7 @@
+FROM mcianciara/upmem:rocky9.2
+
+WORKDIR /app
+
+ADD example.py /app
+
+CMD ["python3", "example.py"]

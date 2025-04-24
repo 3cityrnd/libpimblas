@@ -1,0 +1,29 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y tar
+RUN apt-get install -y python3
+RUN apt-get install -y python3-dev
+RUN apt-get install -y libxml2
+RUN apt-get install -y libelf1
+RUN apt-get install -y python3-six
+RUN apt-get install -y python3-psutil
+RUN apt-get install -y libedit2
+RUN apt-get install -y libnuma1
+
+WORKDIR /app
+
+
+# ADD ./ubuntu/upmem-2024.2.0-Linux-x86_64.tar.gz /app
+ADD http://sdk-releases.upmem.com/2024.2.0/ubuntu_22.04/upmem-2024.2.0-Linux-x86_64.tar.gz /app/
+RUN tar -xvf upmem-2024.2.0-Linux-x86_64.tar.gz
+
+
+# Set UPMEM environment variables
+ENV UPMEM_HOME=/app/upmem-2024.2.0-Linux-x86_64/
+ENV LD_LIBRARY_PATH=/app/upmem-2024.2.0-Linux-x86_64/lib:${LD_LIBRARY_PATH}
+ENV PATH=/app/upmem-2024.2.0-Linux-x86_64/bin/:${PATH}
+ENV PYTHONPATH=/app/upmem-2024.2.0-Linux-x86_64/local/lib/python3.10/dist-packages:${PYTHONPATH}
+
+ADD example.py /app
+
+CMD ["python3", "example.py"]
