@@ -31,6 +31,9 @@ row_size - maximum size of single matrix row
 // TODO: Find even more optimal value
 #define BLOCK_SIZE 64
 
+#define ROUND_UP(x, s) (((x) + ((s) - 1)) & ~((s) - 1))
+#define ROUND_DOWN(x, s) ((x) & ~((s) - 1))
+
 struct params {
   uint32_t rows_per_dpu;
   uint32_t row_size;
@@ -41,14 +44,6 @@ struct params {
 __host struct params args;
 
 BARRIER_INIT(mem_reset_barrier, NR_TASKLETS);
-
-uint32_t alignUpTo8(uint32_t value) { return (value + 7) & ~7; }
-
-uint32_t alignDownTo8(uint32_t value) { return value & ~7; }
-
-uint32_t alignUpTo64(uint32_t value) { return (value + 63) & ~63; }
-
-uint32_t alignUpTo2(uint32_t value) { return (value + 1) & ~1; }
 
 int main() {
   int tasklet_id = me();
@@ -74,10 +69,10 @@ int main() {
 
   int *A_mram = (int *)(DPU_MRAM_HEAP_POINTER + mram_offset_in_bytes +
                         (tasklet_id * args.row_size * rows_per_tasklet) * sizeof(int));
-  mram_offset_in_bytes += alignUpTo8(args.row_size * args.rows_per_dpu * sizeof(int));
+  mram_offset_in_bytes += ROUND_UP(args.row_size * args.rows_per_dpu * sizeof(int), 8);
 
   int *x_mram = (int *)(DPU_MRAM_HEAP_POINTER + mram_offset_in_bytes);
-  mram_offset_in_bytes += alignUpTo8(args.row_size * sizeof(int));
+  mram_offset_in_bytes += ROUND_UP(args.row_size * sizeof(int), 8);
 
   // Should be fine as long as rows_per_tasklet is even
   int *result_mram =
@@ -94,7 +89,7 @@ int main() {
   // We add 64B in order to be aligned.
   int *A_wram = (int *)mem_alloc((BLOCK_SIZE) * sizeof(int) + 64);
 
-  uint32_t result_size = alignUpTo64(rows_per_tasklet * sizeof(int));
+  uint32_t result_size = ROUND_UP(rows_per_tasklet * sizeof(int), 64);
   int *mul_result_wram = (int *)mem_alloc(result_size);
 
   // zero out the results - it's required when we are running the kernel multiple times.
@@ -114,16 +109,21 @@ int main() {
         // This happens when row_size is an odd value.
         // In our case when we are working on 4B ints it means we need to shift
         // one int (4B) to get to the values we want. That also means we need to read a bit more
-        mram_read((__mram_ptr void *)(alignDownTo8(a_offset)), A_wram, (BLOCK_SIZE + 2) * sizeof(int));
+        mram_read((__mram_ptr void *)(ROUND_DOWN(a_offset, 8)), A_wram, (BLOCK_SIZE + 2) * sizeof(int));
         A_wram_read = (A_wram + 1);
       } else {
         mram_read((__mram_ptr void *)(a_offset), A_wram, BLOCK_SIZE * sizeof(int));
         A_wram_read = A_wram;
       }
 
+      uint32_t j = 0;
       int sum = 0;
-#pragma unroll
-      for (uint32_t j = 0; j < block_length; ++j) {
+      #pragma unroll(32)
+      for (; j < ROUND_DOWN(block_length, 32); ++j) {
+        sum += A_wram_read[j] * x_wram[j];
+      }
+
+      for (; j < block_length; ++j) {
         sum += A_wram_read[j] * x_wram[j];
       }
 
